@@ -7,7 +7,7 @@ It takes as input the rosbag file path, the results file path and the topic you 
 It playbacks the rosbag file and allows you to pause, rewind and save the current timestamp to the result file.
 So the produced file is simply a text with timestamps of the annotated event.
 
-Information on Keys:			
+Program controls:			
 
 | Key | Description          |
 | ------------- | -----------|
