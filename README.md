@@ -17,7 +17,6 @@ Program controls:
 | w     | Saves timestamp with id 1 |
 | left arrow     | Reduce playback speed |
 | right arrow     | Increase playback speed |
-| w     | Saves timestamp with id 1 |
 | space | Pauses program     |
 | Esc     | Quits program      |
 
