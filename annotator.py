@@ -15,7 +15,7 @@ import rosbag
 import yaml
 
 global bag_file, feature_file, input_topic
-global pause, buff, time_buff, buff_size, counter, current, framerate, start_time
+global pause, buff, time_buff, buff_size, counter, current, framerate, step, start_time
 pause = False
 counter = 0
 pause_time = None
@@ -31,7 +31,7 @@ def main(argv):
 	
 	
 	global  bag_file, feature_file, input_topic
-	global  start_time, pause, buff, time_buff, buff_size, counter, current, framerate
+	global  start_time, pause, buff, time_buff, buff_size, counter, current, framerate, step
 	
 	# Process args
 	if (len(argv) > 2):
@@ -46,10 +46,13 @@ def main(argv):
 			print "\nOption:"			
 			print "\t-t: Topic to be used for annotation, e.g. camera/rgb/image_raw"
 			print "\nInformation on Keys:"			
-			print "\tq: Quits"
+			print "\tEsc: Quits"
 			print "\ta: Go back 1 frame"
 			print "\td: Go forward 1 frame"
-			print "\ts: Writes the timestamp on the result file"
+			print "\tw: Writes the timestamp on the result file with id 1"
+			print "\ts: Writes the timestamp on the result file with id 0"
+			print "\t<-: Reduce playback speed"
+			print "\t->: Increase playback speed"
 			print "\tspace: Pause image"
 			exit(0)		
 	else:
@@ -65,6 +68,7 @@ def main(argv):
 	messages =  topic['messages']
 	duration = info_dict['duration']
 	framerate = messages/duration
+	step = framerate/5
 	
 	#Create results file
 	feature_file = argv[2]
@@ -87,7 +91,6 @@ def main(argv):
 		if counter == 0:
 			start_time = t
 		buff.append(msg)
-		print t.to_sec() - start_time.to_sec()
 		time_buff.append(t.to_sec() - start_time.to_sec())	
 		cv2.imshow("Image", cv_image)
 		keyPressed(file_obj)
@@ -116,13 +119,19 @@ def main(argv):
 	
 
 def keyPressed(file_obj, key = None):
-	global bag_file, prev_frame, pause, counter, time_buff, counter, current, framerate
+	global bag_file, prev_frame, pause, counter, time_buff, counter, current, framerate, step
 	key = cv2.waitKey(int(round(1000/framerate)));
 	if key == -1:
 		return
-	if  key & 0xFF == ord('q'):
+	if  key & 0xFF == 27:
 		cv2.destroyAllWindows()
 		exit(0)	
+	if  key == 1113937:
+		if framerate - step > 0:
+			framerate = framerate - step
+	if  key == 1113939:
+		framerate = framerate + step
+		print framerate
 	if  key & 0xFF == ord('a'):
 		pause = True
 		if counter == 0:
@@ -134,7 +143,9 @@ def keyPressed(file_obj, key = None):
 			return
 		counter += 1
 	if  key & 0xFF == ord('s'):
-		file_obj.write(str(time_buff[counter]) + "\n")
+		file_obj.write(str(time_buff[counter]) + "\t0\n")
+	if  key & 0xFF == ord('w'):
+		file_obj.write(str(time_buff[counter]) + "\t1\n")
 	if  key & 0xFF == ord(' '):
 		pause_time = None
 		if pause is True:

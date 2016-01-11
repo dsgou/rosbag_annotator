@@ -13,8 +13,12 @@ Program controls:
 | ------------- | -----------|
 | a     | Go forward 1 frame |
 | d     | Go back 1 frame    |
-| s     | Saves timestamp    |
+| s     | Saves timestamp with id 0 |
+| w     | Saves timestamp with id 1 |
+| left arrow     | Reduce playback speed |
+| right arrow     | Increase playback speed |
+| w     | Saves timestamp with id 1 |
 | space | Pauses program     |
-| q     | Quits program      |
+| Esc     | Quits program      |
 
 For options and help execute with -h
