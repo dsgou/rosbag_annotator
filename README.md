@@ -1,6 +1,6 @@
 # rosbag_annotator
 
-This repository is a tool that helps you annotate a rosbag file topic by producing a result file with timestamps.
+This program will help you annotate a rosbag file by producing a result file with timestamps of the annotated events.
 Currently works only for Image and CompressedImage topics 
 
 It takes as input the rosbag file path, the results file path and the topic you want to view.
