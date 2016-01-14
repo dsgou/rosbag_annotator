@@ -75,6 +75,7 @@ def main(argv):
 	if 'CompressedImage' in topic_type:
 		compressed = True
 		
+	#Get framerate	
 	framerate = messages/duration
 	step = framerate/5
 	
@@ -117,11 +118,20 @@ def main(argv):
 		
 		#If the image is paused
 		while(pause):
-			cv2.imshow("Image", bridge.imgmsg_to_cv2(buff[counter], "bgr8"))
+			if not compressed:
+				cv2.imshow("Image", bridge.imgmsg_to_cv2(buff[counter], "bgr8"))
+			else:
+				nparr = np.fromstring(buff[counter].data, np.uint8)
+				cv2.imshow("Image", cv2.imdecode(nparr, cv2.CV_LOAD_IMAGE_COLOR))
+				
 			keyPressed(file_obj)
 			if counter < current and not pause:
 				for msg in buff[counter::]:
-					cv2.imshow("Image", bridge.imgmsg_to_cv2(msg, "bgr8"))
+					if not compressed:
+						cv2.imshow("Image", bridge.imgmsg_to_cv2(msg, "bgr8"))
+					else:
+						nparr = np.fromstring(msg.data, np.uint8)
+						cv2.imshow("Image", cv2.imdecode(nparr, cv2.CV_LOAD_IMAGE_COLOR))
 					keyPressed(file_obj)
 					if pause:
 						break
@@ -151,7 +161,6 @@ def keyPressed(file_obj, key = None):
 			framerate = framerate - step
 	if  key == 1113939:
 		framerate = framerate + step
-		print framerate
 	if  key & 0xFF == ord('a'):
 		pause = True
 		if counter == 0:
