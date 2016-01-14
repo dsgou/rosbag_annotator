@@ -2,6 +2,7 @@
 import roslib
 import cv2
 from sensor_msgs.msg import Image
+from sensor_msgs.msg import CompressedImage
 from cv_bridge import CvBridge, CvBridgeError
 import rospy
 from std_msgs.msg import String
@@ -13,10 +14,11 @@ import time
 import threading
 import rosbag
 import yaml
+import numpy as np
 
 global bag_file, feature_file, input_topic
-global pause, buff, time_buff, buff_size, counter, current, framerate, step, start_time
-pause = False
+global pause, buff, time_buff, buff_size, counter, current, framerate, step, start_time, compressed
+pause = compressed = False
 counter = 0
 pause_time = None
 buff_size = 100
@@ -31,14 +33,14 @@ def main(argv):
 	
 	
 	global  bag_file, feature_file, input_topic
-	global  start_time, pause, buff, time_buff, buff_size, counter, current, framerate, step
+	global  start_time, pause, buff, time_buff, buff_size, counter, current, framerate, step, compressed
 	
 	# Process args
 	if (len(argv) > 2):
 		if '-t' in argv:
-			index = argv.index('-f')
+			index = argv.index('-t')
 			if len(argv) >= (index + 2) and not argv[index + 1].startswith('-'):
-				topic = argv[index + 1]	
+				input_topic = argv[index + 1]	
 		if '-h' in argv or '-help' in argv or 'help' in argv:
 			print "\nAvailable arguments"	
 			print "\t: First argument, rosbag file, absolute path"
@@ -51,14 +53,14 @@ def main(argv):
 			print "\td: Go forward 1 frame"
 			print "\tw: Writes the timestamp on the result file with id 1"
 			print "\ts: Writes the timestamp on the result file with id 0"
+			print "\tspace: Pause image"
 			print "\t<-: Reduce playback speed"
 			print "\t->: Increase playback speed"
-			print "\tspace: Pause image"
 			exit(0)		
 	else:
 		print"Too few arguments, type -h for more info"
 		exit(0)		
-		
+	
 	#Open bag and get framerate	
 	bag_file = argv[1]
 	bag = rosbag.Bag(bag_file)
@@ -67,6 +69,12 @@ def main(argv):
 	topic = topics[1]
 	messages =  topic['messages']
 	duration = info_dict['duration']
+	topic_type = topic['type']
+	
+	#Checking if the topic is compressed
+	if 'CompressedImage' in topic_type:
+		compressed = True
+		
 	framerate = messages/duration
 	step = framerate/5
 	
@@ -84,14 +92,26 @@ def main(argv):
 	#Loop through the rosbag
 	for topic, msg, t in bag.read_messages(topics=[input_topic]):
 		current = counter
-		try:
-			cv_image = bridge.imgmsg_to_cv2(msg, "bgr8")
-		except CvBridgeError as e:
-			print(e)
+		
+		#Get the image
+		if not compressed:
+			try:
+				cv_image = bridge.imgmsg_to_cv2(msg, "bgr8")
+			except CvBridgeError as e:
+				print(e)
+		else:
+			nparr = np.fromstring(msg.data, np.uint8)
+			cv_image = cv2.imdecode(nparr, cv2.CV_LOAD_IMAGE_COLOR)
+			
+			
 		if counter == 0:
 			start_time = t
+			
+		#Append image buffer and time buffer	
 		buff.append(msg)
 		time_buff.append(t.to_sec() - start_time.to_sec())	
+		
+		#Display image
 		cv2.imshow("Image", cv_image)
 		keyPressed(file_obj)
 		

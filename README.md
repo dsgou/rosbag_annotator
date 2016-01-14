@@ -1,11 +1,13 @@
 # rosbag_annotator
 
 This repository is a tool that helps you annotate a rosbag file topic by producing a result file with timestamps.
-Currently works only for image topics 
+Currently works only for Image and CompressedImage topics 
 
 It takes as input the rosbag file path, the results file path and the topic you want to view.
-It playbacks the rosbag file and allows you to pause, rewind and save the current timestamp to the result file.
-So the produced file is simply a text with timestamps of the annotated event.
+It playbacks the rosbag file and give you some basic controls over the display.
+It allows you to pause, rewind and save the current timestamp to the result file.
+I have added two buttons for events annotation, each with its own id. 
+So the produced file is a simple text file with 2 collumns. The first has the timestamps of the annotated event and the second the id of the event.
 
 Program controls:			
 
