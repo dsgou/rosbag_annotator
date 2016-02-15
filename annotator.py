@@ -22,7 +22,7 @@ pause = compressed = False
 counter = 0
 pause_time = None
 buff_size = 100
-input_topic = 'camera/rgb/image_raw'
+input_topic = None
 
 def main(argv):
 	"""
@@ -34,28 +34,27 @@ def main(argv):
 	
 	global  bag_file, feature_file, input_topic
 	global  start_time, pause, buff, time_buff, buff_size, counter, current, framerate, step, compressed
-	
 	# Process args
-	if (len(argv) >= 2):
-		if '-t' in argv:
-			index = argv.index('-t')
-			if len(argv) >= (index + 2) and not argv[index + 1].startswith('-'):
-				input_topic = argv[index + 1]	
+	if (len(argv) >= 2):	
 		if '-h' in argv or '-help' in argv or 'help' in argv:
+			print "\nThis script annotates a rosbag file and creates a result file"
 			print "\nAvailable arguments"	
-			print "\t: First argument, rosbag file, absolute path"
-			print "\t: Second argument, result file name, relative path"
-			print "\nOption:"			
-			print "\t-t: Topic to be used for annotation, e.g. camera/rgb/image_raw"
+			print "\t- First argument, rosbag file, absolute path"
+			print "\t- Second argument, topic to be used for annotation, e.g. camera/rgb/image_raw"
 			print "\nInformation on Keys:"			
 			print "\tEsc: Quits"
 			print "\ta: Go back 1 frame"
 			print "\td: Go forward 1 frame"
+			print "\te: Writes the timestamp on the result file with id 3"
+			print "\tq: Writes the timestamp on the result file with id 2"
 			print "\tw: Writes the timestamp on the result file with id 1"
 			print "\ts: Writes the timestamp on the result file with id 0"
 			print "\tspace: Pause image"
 			print "\t<-: Reduce playback speed"
 			print "\t->: Increase playback speed"
+			exit(0)		
+		elif (len(argv) < 3):
+			print"Too few arguments, type -h for more info"
 			exit(0)		
 	else:
 		print"Too few arguments, type -h for more info"
@@ -71,6 +70,15 @@ def main(argv):
 	duration = info_dict['duration']
 	topic_type = topic['type']
 	
+	#Get the topic name
+	input_topic = argv[2]
+	
+	#Messages for test
+	print "Script parameters: ","\n\t- Bag file: ", bag_file, "\n\t- Topic: ", input_topic, 
+	print "\nRosbag topics found: "
+	for top in topics:
+		print "\t- ", top["topic"], "\n\t\t-Type: ", topic["type"],"\n\t\t-Fps: ", topic["frequency"]
+		
 	#Checking if the topic is compressed
 	if 'CompressedImage' in topic_type:
 		compressed = True
@@ -80,10 +88,9 @@ def main(argv):
 	step = framerate/5
 	
 	#Create results file
-	feature_file = argv[2]
+	feature_file = ((bag_file.split(".")[0]).split("/")[-1]) + "_RES"
 	if os.path.exists(feature_file):
-		print 'Results file already exists'
-		exit(0)
+		os.remove(feature_file)
 	file_obj = open(feature_file, 'a')
 	
 	bridge = CvBridge()
@@ -175,6 +182,10 @@ def keyPressed(file_obj, key = None):
 		file_obj.write(str(time_buff[counter]) + "\t0\n")
 	if  key & 0xFF == ord('w'):
 		file_obj.write(str(time_buff[counter]) + "\t1\n")
+	if  key & 0xFF == ord('q'):
+		file_obj.write(str(time_buff[counter]) + "\t2\n")
+	if  key & 0xFF == ord('e'):
+		file_obj.write(str(time_buff[counter]) + "\t3\n")
 	if  key & 0xFF == ord(' '):
 		pause_time = None
 		if pause is True:
