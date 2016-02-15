@@ -36,7 +36,7 @@ def main(argv):
 	global  start_time, pause, buff, time_buff, buff_size, counter, current, framerate, step, compressed
 	
 	# Process args
-	if (len(argv) > 2):
+	if (len(argv) >= 2):
 		if '-t' in argv:
 			index = argv.index('-t')
 			if len(argv) >= (index + 2) and not argv[index + 1].startswith('-'):
