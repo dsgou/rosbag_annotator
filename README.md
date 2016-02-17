@@ -20,6 +20,7 @@ Program controls:
 | w     | Saves timestamp with id 1 |
 | q     | Saves timestamp with id 2 |
 | e     | Saves timestamp with id 3 |
+| z     | Saves timestamp with id 4 |
 | space | Pauses program     |
 | left arrow     | Reduce playback speed |
 | right arrow     | Increase playback speed |

@@ -18,7 +18,7 @@ import numpy as np
 
 global bag_file, feature_file, input_topic
 global pause, buff, time_buff, buff_size, counter, current, framerate, step, start_time, compressed
-pause = compressed = False
+pause = compressed = append = False
 counter = 0
 pause_time = None
 buff_size = 100
@@ -32,19 +32,24 @@ def main(argv):
 	"""
 	
 	
-	global  bag_file, feature_file, input_topic
+	global  bag_file, feature_file, input_topic, append
 	global  start_time, pause, buff, time_buff, buff_size, counter, current, framerate, step, compressed
 	# Process args
 	if (len(argv) >= 2):	
+		if '-a' in argv:
+			append = True
 		if '-h' in argv or '-help' in argv or 'help' in argv:
 			print "\nThis script annotates a rosbag file and creates a result file"
 			print "\nAvailable arguments"	
 			print "\t- First argument, rosbag file, absolute path"
 			print "\t- Second argument, topic to be used for annotation, e.g. camera/rgb/image_raw"
+			print "\nOptional arguments"	
+			print "\t-a: Append result file instead of creating new"
 			print "\nInformation on Keys:"			
 			print "\tEsc: Quits"
 			print "\ta: Go back 1 frame"
 			print "\td: Go forward 1 frame"
+			print "\tz: Writes the timestamp on the result file with id 4"
 			print "\te: Writes the timestamp on the result file with id 3"
 			print "\tq: Writes the timestamp on the result file with id 2"
 			print "\tw: Writes the timestamp on the result file with id 1"
@@ -90,7 +95,8 @@ def main(argv):
 	#Create results file
 	feature_file = ((bag_file.split(".")[0]).split("/")[-1]) + "_RES"
 	if os.path.exists(feature_file):
-		os.remove(feature_file)
+		if not append:
+			os.remove(feature_file)
 	file_obj = open(feature_file, 'a')
 	
 	bridge = CvBridge()
@@ -186,6 +192,8 @@ def keyPressed(file_obj, key = None):
 		file_obj.write(str(time_buff[counter]) + "\t2\n")
 	if  key & 0xFF == ord('e'):
 		file_obj.write(str(time_buff[counter]) + "\t3\n")
+	if  key & 0xFF == ord('z'):
+		file_obj.write(str(time_buff[counter]) + "\t4\n")
 	if  key & 0xFF == ord(' '):
 		pause_time = None
 		if pause is True:
