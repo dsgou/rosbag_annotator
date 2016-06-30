@@ -52,10 +52,10 @@ def parse_arguments():
 		\t<-: Reduce playback speed
 		\t->: Increase playback speed
 		'''))
-	parser.add_argument('-i', '--input-file',    required=True, help="rosbag file, absolute path")
-	parser.add_argument('-vt', '--visual-topic', required=True, help="topic to be used for visual annotation, e.g. /camera/rgb/image_raw")
-	parser.add_argument('-c', '--csv-file', help="csv file with bounded boxes of the bag played")
-	parser.add_argument('-o', '--output-file', help="output result file")
+	parser.add_argument('-i', '--input-file',    required=True,  nargs='?', help="rosbag file, absolute path")
+	parser.add_argument('-vt', '--visual-topic', required=True,  nargs='?', help="topic to be used for visual annotation, e.g. /camera/rgb/image_raw")
+	parser.add_argument('-c', '--csv-file',  nargs='?', help="csv file with bounded boxes of the bag played")
+	parser.add_argument('-o', '--output-file',  nargs='?', help="output annotation result file")
 	parser.add_argument('-a', '--append', default=False, help="append result file instead of creating new", action='store_true')
 	return parser.parse_args()
 
@@ -76,6 +76,10 @@ def mouse_cb(event, x , y, flags, param):
 		
 	if flags == (cv2.EVENT_FLAG_CTRLKEY + cv2.EVENT_FLAG_LBUTTON):	
 		print x,y
+	
+def setCounter(x, counter):
+	counter = x	
+	print current
 	
 def play_bag_file(bag_file, csv_file):
 	global pause
@@ -113,33 +117,31 @@ def play_bag_file(bag_file, csv_file):
 	step = framerate/5
 	
 	bridge = CvBridge()
-	buff = []
+	image_buff = []
 	time_buff = []
 	box_buff = []
 	counter = 0
-	buff_size = 100
+	buff_size = messages
 	file_obj = open(feature_file, 'a')
 	
 	cv_image = None
 	cv2.namedWindow("Image");
 	cv2.setMouseCallback("Image", mouse_cb)
+	cv2.createTrackbar('Progress', 'Image', 0, messages, setCounter)
 	
-	csv = open(csv_file, 'r')
-	index = 0
-	line = csv.readline()
-	for field in line.split('\t'):
-		if 'Rect_x' in field:
-			break
-		index += 1
-	
+	if csv_file is not None and os.path.exists(csv_file):
+		csv = open(csv_file, 'r')
+		index = 0
+		line = csv.readline()
+		for field in line.split('\t'):
+			if 'Rect_x' in field:
+				break
+			index += 1
+			
 	#Loop through the rosbag
 	for topic, msg, t in bag.read_messages(topics=[input_topic]):
-		current = counter
-		line = csv.readline()
-		try:
-			(x, y, width, height) = map(int, line.split('\t')[index:index + 4])
-		except Exception as e:
-			print "Reading csv ", e
+		if counter == 0:
+			start_time = t
 			
 		#Get the image
 		if not compressed:
@@ -150,51 +152,60 @@ def play_bag_file(bag_file, csv_file):
 		else:
 			nparr = np.fromstring(msg.data, np.uint8)
 			cv_image = cv2.imdecode(nparr, cv2.CV_LOAD_IMAGE_COLOR)
-		cv2.rectangle(cv_image, (x, y), ((x + width), (y + height)), (255, 0, 0), 1)	
-		if counter == 0:
-			start_time = t
 			
-		#Append image buffer and time buffer	
-		buff.append(msg)
-		box_buff.append((x, y, width, height))
-		time_buff.append(t.to_sec() - start_time.to_sec())	
+		try:
+			line = csv.readline()
+			(x, y, width, height) = map(int, line.split('\t')[index:index + 4])
+			box_buff.append((x, y, width, height))		
+		except Exception as e:
+			pass
+				
+		image_buff.append(cv_image)
+		time_buff.append(t.to_sec() - start_time.to_sec())
+		counter += 1
+	
+	
+			
+	counter = 0
+	
+	#Loop through the image buffer
+	for current in range(len(image_buff)):
+		current = counter
+		cv_image = image_buff[current].copy()
 		
 		try:
+			(x, y, width, height) = box_buff[current]
+			cv2.rectangle(cv_image, (x, y), ((x + width), (y + height)), (255, 0, 0), 1)	
 			if start_rect[0] != None and start_rect[1] != None:
 				cv2.rectangle(cv_image, start_rect[0], start_rect[1], (255, 0, 0), 1)
 		except Exception as e:
-			print e
+			pass
 			
 		#Display image
 		cv2.imshow("Image", cv_image)
 		keyPressed(time_buff, file_obj)
-		
+
 		#If the image is paused
 		while(pause):
-			cv_image_pause = None
-			if not compressed:
-				cv_image_pause = bridge.imgmsg_to_cv2(buff[counter], "bgr8")
-			else:
-				nparr = np.fromstring(buff[counter].data, np.uint8)
-				cv_image_pause = cv2.imdecode(nparr, cv2.CV_LOAD_IMAGE_COLOR)
+			cv_image_pause = image_buff[counter].copy()
 			if start_rect[0] != None and start_rect[1] != None:
-				cv2.rectangle(cv_image_pause, start_rect[0], start_rect[1], (255, 0, 0), 1)
 				box_buff[counter] = (start_rect[0][0], start_rect[0][1], start_rect[1][0] - start_rect[0][0], start_rect[1][1]- start_rect[0][1])
-			else:	
+			
+			try:
 				(x, y, width, height) = box_buff[counter]
 				cv2.rectangle(cv_image_pause, (x, y), ((x + width), (y + height)), (255, 0, 0), 1)	
+			except Exception as e:
+				pass
+				
 			cv2.imshow("Image", cv_image_pause)
 			keyPressed(time_buff, file_obj)
 			if counter < current and not pause:
-				for msg in buff[counter::]:
-					cv_image_pause = None
-					if not compressed:
-						cv_image_pause = bridge.imgmsg_to_cv2(buff[counter], "bgr8")
-					else:
-						nparr = np.fromstring(buff[counter].data, np.uint8)
-						cv_image_pause = cv2.imdecode(nparr, cv2.CV_LOAD_IMAGE_COLOR)
-					(x, y, width, height) = box_buff[counter]
-					cv2.rectangle(cv_image_pause, (x, y), ((x + width), (y + height)), (255, 0, 0), 1)	
+				for cv_image_pause in image_buff[counter::]:
+					try:					
+						(x, y, width, height) = box_buff[counter]
+						cv2.rectangle(cv_image_pause, (x, y), ((x + width), (y + height)), (255, 0, 0), 1)	
+					except Exception as e:
+						pass
 					cv2.imshow("Image", cv_image_pause)
 					keyPressed(time_buff, file_obj)
 					if pause:
@@ -202,15 +213,17 @@ def play_bag_file(bag_file, csv_file):
 					if counter < current:	
 						counter += 1
 					start_rect = 2*[None]
-		if len(buff) >= buff_size:
-			del buff[0:10]		
-		if len(box_buff) >= buff_size:
-			del box_buff[0:10]		
-		if len(time_buff) >= buff_size:
-			del time_buff[0:10]		
-			counter -= 10
 		counter += 1
 		start_rect = 2*[None]
+	
+	if csv_file is not None and os.path.exists(csv_file):	
+		input_file  = open(csv_file, 'r')
+		output_file = open(csv_file.split(".")[0] + "_out.csv", 'w')
+		for line, i in zip(input_file, range(len(box_buff))):
+			print map(str, box_buff[i])
+			line.split('\t')[index:index + 4] = map(str, box_buff[i])
+			output_file.write(line)
+			
 	bag.close()
 	
 def keyPressed(time_buff, file_obj, key = None):
@@ -268,17 +281,16 @@ if __name__ =='__main__':
 	input_topic = args.visual_topic
 	append = args.append
 	
-	
 	#Create results file
 	if(output_file is None):
-		feature_file = ((bag_file.split(".")[0]).split("/")[-1]) + "_RES"
+		feature_file = bag_file.split(".")[0].split("/")[-1] + "_RES"
 	else:
 		feature_file = output_file
 	
 	if os.path.exists(feature_file) and not append:
-		os.remove(feature_file)	
+		os.remove(feature_file)
+		
 	print feature_file	
-	
 	
 	#Open bag and get framerate	
 	play_bag_file(bag_file, csv_file)
