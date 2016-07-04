@@ -16,8 +16,10 @@ import yaml
 import numpy as np
 import argparse
 import textwrap
+import csv
 
 global pause
+global compressed
 global framerate
 global step
 global counter
@@ -59,7 +61,6 @@ def parse_arguments():
 	parser.add_argument('-a', '--append', default=False, help="append result file instead of creating new", action='store_true')
 	return parser.parse_args()
 
-
 def mouse_cb(event, x , y, flags, param):
 	global mouse_pressed
 	global mouse_loc
@@ -77,26 +78,54 @@ def mouse_cb(event, x , y, flags, param):
 	if flags == (cv2.EVENT_FLAG_CTRLKEY + cv2.EVENT_FLAG_LBUTTON):	
 		print x,y
 	
-def setCounter(x, counter):
-	counter = x	
-	print current
-	
-def play_bag_file(bag_file, csv_file):
-	global pause
-	global framerate
-	global step
+def setCounter(x):
 	global counter
-	global current
-	global mouse_pressed
-	global mouse_loc
-	global prev_mouse_loc
-	global start_rect
+	counter = x
+
+def buffer_data(csv_file, bag, input_topic):
+	global compressed
 	
-	bag = rosbag.Bag(bag_file)
+	counter = 0
+	image_buff = []
+	time_buff = []
+	box_buff = []
+	bridge = CvBridge()
+	
+	#Get the bounded boxes from the csv
+	if csv_file is not None and os.path.exists(csv_file):
+		with open(csv_file, 'r') as file_obj:
+			csv_reader = csv.reader(file_obj, skipinitialspace=True, delimiter = '\t')
+			index = [x.strip() for x in csv_reader.next()].index('Rect_x')
+			for row in csv_reader:
+				(x, y, width, height) = map(int, row[index:index + 4])
+				box_buff.append((x, y, width, height))
+	
+	#Buffer the rosbag		
+	for topic, msg, t in bag.read_messages(topics=[input_topic]):
+		if counter == 0:
+			start_time = t
+			
+		#Get the image
+		if not compressed:
+			try:
+				cv_image = bridge.imgmsg_to_cv2(msg, "bgr8")
+			except CvBridgeError as e:
+				print e
+		else:
+			nparr = np.fromstring(msg.data, np.uint8)
+			cv_image = cv2.imdecode(nparr, cv2.CV_LOAD_IMAGE_COLOR)
+			
+		image_buff.append(cv_image)
+		time_buff.append(t.to_sec() - start_time.to_sec())
+		counter += 1
+		
+	return image_buff, box_buff, time_buff	
+
+def get_bag_metadata(bag):
 	info_dict = yaml.load(bag._get_yaml_info())
 	topics =  info_dict['topics']
 	topic = topics[1]
-	messages =  topic['messages']
+	message_count =  topic['messages']
 	duration = info_dict['duration']
 	topic_type = topic['type']
 		
@@ -113,117 +142,81 @@ def play_bag_file(bag_file, csv_file):
 		compressed = False
 		
 	#Get framerate	
-	framerate = messages/duration
+	framerate = message_count/duration
 	step = framerate/5
 	
-	bridge = CvBridge()
-	image_buff = []
-	time_buff = []
-	box_buff = []
-	counter = 0
-	buff_size = messages
-	file_obj = open(feature_file, 'a')
+	return compressed, framerate, step, message_count
+		
+def play_bag_file(bag_file, csv_file):
+	global pause
+	global counter
+	global compressed
+	global framerate
+	global step
+	global current
+	global mouse_pressed
+	global mouse_loc
+	global prev_mouse_loc
+	global start_rect
 	
+	#Open bag
+	bag = rosbag.Bag(bag_file)
+	
+	#Get bag metadata
+	(compressed, framerate, step, message_count) = get_bag_metadata(bag)
+	
+	file_obj = open(feature_file, 'a')
+	current = 0
+	counter = 0
 	cv_image = None
 	cv2.namedWindow("Image");
 	cv2.setMouseCallback("Image", mouse_cb)
-	cv2.createTrackbar('Progress', 'Image', 0, messages, setCounter)
+	cv2.createTrackbar('Progress', 'Image', current, message_count, setCounter)
 	
-	if csv_file is not None and os.path.exists(csv_file):
-		csv = open(csv_file, 'r')
-		index = 0
-		line = csv.readline()
-		for field in line.split('\t'):
-			if 'Rect_x' in field:
-				break
-			index += 1
-			
-	#Loop through the rosbag
-	for topic, msg, t in bag.read_messages(topics=[input_topic]):
-		if counter == 0:
-			start_time = t
-			
-		#Get the image
-		if not compressed:
-			try:
-				cv_image = bridge.imgmsg_to_cv2(msg, "bgr8")
-			except CvBridgeError as e:
-				print e
-		else:
-			nparr = np.fromstring(msg.data, np.uint8)
-			cv_image = cv2.imdecode(nparr, cv2.CV_LOAD_IMAGE_COLOR)
-			
-		try:
-			line = csv.readline()
-			(x, y, width, height) = map(int, line.split('\t')[index:index + 4])
-			box_buff.append((x, y, width, height))		
-		except Exception as e:
-			pass
-				
-		image_buff.append(cv_image)
-		time_buff.append(t.to_sec() - start_time.to_sec())
-		counter += 1
-	
-	
-			
-	counter = 0
-	
+	#Buffer the rosbag, boxes, timestamps
+	(image_buff, box_buff, time_buff) = buffer_data(csv_file, bag, input_topic) 		
+		
 	#Loop through the image buffer
-	for current in range(len(image_buff)):
+	while current in range(0, len(image_buff) - 1):
 		current = counter
 		cv_image = image_buff[current].copy()
-		
 		try:
 			(x, y, width, height) = box_buff[current]
 			cv2.rectangle(cv_image, (x, y), ((x + width), (y + height)), (255, 0, 0), 1)	
-			if start_rect[0] != None and start_rect[1] != None:
-				cv2.rectangle(cv_image, start_rect[0], start_rect[1], (255, 0, 0), 1)
 		except Exception as e:
 			pass
-			
 		#Display image
 		cv2.imshow("Image", cv_image)
 		keyPressed(time_buff, file_obj)
-
 		#If the image is paused
 		while(pause):
 			cv_image_pause = image_buff[counter].copy()
-			if start_rect[0] != None and start_rect[1] != None:
-				box_buff[counter] = (start_rect[0][0], start_rect[0][1], start_rect[1][0] - start_rect[0][0], start_rect[1][1]- start_rect[0][1])
-			
 			try:
+				if start_rect[0] != None and start_rect[1] != None:
+					box_buff[counter] = (start_rect[0][0], start_rect[0][1], start_rect[1][0] - start_rect[0][0], start_rect[1][1]- start_rect[0][1])
+					start_rect = 2*[None]
 				(x, y, width, height) = box_buff[counter]
 				cv2.rectangle(cv_image_pause, (x, y), ((x + width), (y + height)), (255, 0, 0), 1)	
 			except Exception as e:
 				pass
-				
 			cv2.imshow("Image", cv_image_pause)
 			keyPressed(time_buff, file_obj)
-			if counter < current and not pause:
-				for cv_image_pause in image_buff[counter::]:
-					try:					
-						(x, y, width, height) = box_buff[counter]
-						cv2.rectangle(cv_image_pause, (x, y), ((x + width), (y + height)), (255, 0, 0), 1)	
-					except Exception as e:
-						pass
-					cv2.imshow("Image", cv_image_pause)
-					keyPressed(time_buff, file_obj)
-					if pause:
-						break
-					if counter < current:	
-						counter += 1
-					start_rect = 2*[None]
+				
 		counter += 1
 		start_rect = 2*[None]
+		#~ cv2.setTrackbarPos('Progress', 'Image', current)
 	
-	if csv_file is not None and os.path.exists(csv_file):	
-		input_file  = open(csv_file, 'r')
-		output_file = open(csv_file.split(".")[0] + "_out.csv", 'w')
-		for line, i in zip(input_file, range(len(box_buff))):
-			print map(str, box_buff[i])
-			line.split('\t')[index:index + 4] = map(str, box_buff[i])
-			output_file.write(line)
-			
+	#Write the new bounded boxes
+	if csv_file is not None and os.path.exists(csv_file):
+		with open(csv_file, 'r') as csv_in:
+			input_file  = csv.reader(csv_in, delimiter = '\t')
+			csv_file_out = csv_file.split(".")[0] + "_out.csv"
+			with open(csv_file_out, 'w') as csv_out:
+				output_file = csv.writer(csv_out)
+				index = [x.strip() for x in input_file.next()].index('Rect_x')
+				for line, i in zip(input_file, range(len(box_buff))):
+					line[index: index + 4] = map(str, box_buff[i])
+					output_file.writerow(line)
 	bag.close()
 	
 def keyPressed(time_buff, file_obj, key = None):
@@ -249,11 +242,8 @@ def keyPressed(time_buff, file_obj, key = None):
 		if counter == 0:
 			return
 		counter -= 1
-		print counter
 	if  key & 0xFF == ord('d'):
 		pause = True
-		if current == counter:
-			return
 		counter += 1
 	if  key & 0xFF == ord('s'):
 		file_obj.write(str(time_buff[counter]) + "\t0\n")
