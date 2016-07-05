@@ -40,11 +40,11 @@ def parse_arguments():
 		\t<-: Reduce playback speed
 		\t->: Increase playback speed
 		'''))
-	parser.add_argument('-i', '--input-file',    required=True,  nargs='?', help="rosbag file, absolute path")
+	parser.add_argument('-i' , '--input-file'  , required=True,  nargs='?', help="rosbag file path")
 	parser.add_argument('-vt', '--visual-topic', required=True,  nargs='?', help="topic to be used for visual annotation, e.g. /camera/rgb/image_raw")
-	parser.add_argument('-c', '--csv-file',  nargs='?', help="csv file with bounded boxes of the bag played")
-	parser.add_argument('-o', '--output-file',  nargs='?', help="output annotation result file")
-	parser.add_argument('-a', '--append', default=False, help="append result file instead of creating new", action='store_true')
+	parser.add_argument('-c' , '--csv-file'    , nargs='?'				  , help="csv file with bounded boxes of the bag played")
+	parser.add_argument('-o' , '--output-file' , nargs='?'				  , help="output annotation result file")
+	parser.add_argument('-a' , '--append'      , default=False			  , help="append result file instead of creating new", action='store_true')
 	return parser.parse_args()
 
 def mouse_cb(event, x , y, flags, param):
@@ -66,7 +66,7 @@ def mouse_cb(event, x , y, flags, param):
 	
 
 def buffer_data(csv_file, bag, input_topic, compressed):
-	counter    = 0
+	start_time = None
 	image_buff = []
 	time_buff  = []
 	box_buff   = []
@@ -83,7 +83,7 @@ def buffer_data(csv_file, bag, input_topic, compressed):
 	
 	#Buffer the images, timestamps from the rosbag
 	for topic, msg, t in bag.read_messages(topics=[input_topic]):
-		if counter == 0:
+		if start_time is None:
 			start_time = t
 			
 		#Get the image
@@ -98,7 +98,6 @@ def buffer_data(csv_file, bag, input_topic, compressed):
 			
 		image_buff.append(cv_image)
 		time_buff.append(t.to_sec() - start_time.to_sec())
-		counter += 1
 		
 	return image_buff, box_buff, time_buff	
 
@@ -106,9 +105,9 @@ def get_bag_metadata(bag):
 	info_dict 	  = yaml.load(bag._get_yaml_info())
 	topics 	  	  = info_dict['topics']
 	topic	  	  = topics[1]
-	message_count = topic['messages']
 	duration 	  = info_dict['duration']
 	topic_type 	  = topic['type']
+	message_count = topic['messages']
 		
 	#Messages for test
 	print "Script parameters: ","\n\t- Bag file: ", bag_file, "\n\t- Topic: ", input_topic, 
@@ -124,9 +123,8 @@ def get_bag_metadata(bag):
 		
 	#Get framerate	
 	framerate = message_count/duration
-	step = framerate/5
 	
-	return compressed, framerate, step
+	return compressed, framerate
 		
 def play_bag_file(bag_file, csv_file):
 	global start_rect
@@ -135,11 +133,8 @@ def play_bag_file(bag_file, csv_file):
 	bag = rosbag.Bag(bag_file)
 	
 	#Get bag metadata
-	(compressed, framerate, step) = get_bag_metadata(bag)
+	(compressed, framerate) = get_bag_metadata(bag)
 	
-	file_obj = open(feature_file, 'a')
-	counter = 0
-	pause  = False
 	cv_image = None
 	cv2.namedWindow("Image");
 	cv2.setMouseCallback("Image", mouse_cb)
@@ -147,6 +142,10 @@ def play_bag_file(bag_file, csv_file):
 	#Buffer the rosbag, boxes, timestamps
 	(image_buff, box_buff, time_buff) = buffer_data(csv_file, bag, input_topic, compressed) 		
 		
+	counter = 0
+	pause  = False
+	events = []
+
 	#Loop through the image buffer
 	while counter in range(0, len(image_buff) - 1):
 		cv_image = image_buff[counter].copy()
@@ -157,7 +156,7 @@ def play_bag_file(bag_file, csv_file):
 			pass
 		#Display image
 		cv2.imshow("Image", cv_image)
-		(counter, framerate, pause) = keyPressed(time_buff, file_obj, counter, framerate, pause)
+		(counter, framerate, pause, events) = keyPressed(time_buff, events, counter, framerate, pause)
 		#If the image is paused
 		while(pause):
 			cv_image_pause = image_buff[counter].copy()
@@ -170,7 +169,7 @@ def play_bag_file(bag_file, csv_file):
 			except Exception as e:
 				pass
 			cv2.imshow("Image", cv_image_pause)
-			(counter, framerate, pause) = keyPressed(time_buff, file_obj, counter, framerate, pause)
+			(counter, framerate, pause, events) = keyPressed(time_buff, events, counter, framerate, pause)
 					
 		counter += 1
 		start_rect = 2*[None]
@@ -187,8 +186,9 @@ def play_bag_file(bag_file, csv_file):
 					line[index: index + 4] = map(str, box_buff[i])
 					output_file.writerow(line)
 	bag.close()
+	return events
 	
-def keyPressed(time_buff, file_obj, counter, framerate, pause, key = None):
+def keyPressed(time_buff, events, counter, framerate, pause, key = None):
 		
 	key = cv2.waitKey(int(round(1000/framerate)));
 	if  key & 0xFF == 27:
@@ -207,32 +207,25 @@ def keyPressed(time_buff, file_obj, counter, framerate, pause, key = None):
 		pause = True
 		counter += 1
 	elif  key & 0xFF == ord('s'):
-		file_obj.write(str(time_buff[counter]) + "\t0\n")
+		events.append(str(time_buff[counter]) + "\t0\n")
 	elif  key & 0xFF == ord('w'):
-		file_obj.write(str(time_buff[counter]) + "\t1\n")
+		events.append(str(time_buff[counter]) + "\t1\n")
 	elif  key & 0xFF == ord('q'):
-		file_obj.write(str(time_buff[counter]) + "\t2\n")
+		events.append(str(time_buff[counter]) + "\t2\n")
 	elif  key & 0xFF == ord('e'):
-		file_obj.write(str(time_buff[counter]) + "\t3\n")
+		events.append(str(time_buff[counter]) + "\t3\n")
 	elif  key & 0xFF == ord('z'):
-		file_obj.write(str(time_buff[counter]) + "\t4\n")
+		events.append(str(time_buff[counter]) + "\t4\n")
 	elif  key & 0xFF == ord(' '):
 		if pause is True:
 			pause = False
 		else:
 			pause = True
 	
-	return counter, framerate, pause		
+	return counter, framerate, pause, events		
 
-if __name__ =='__main__':
-	args        = parse_arguments()
-	append      = args.append
-	bag_file    = args.input_file
-	csv_file    = args.csv_file
-	output_file = args.output_file
-	input_topic = args.visual_topic
-	
-	#Create results file
+
+def write_results(output_file, events):
 	if(output_file is None):
 		feature_file = bag_file.split(".")[0].split("/")[-1] + "_RES"
 	else:
@@ -240,9 +233,23 @@ if __name__ =='__main__':
 	
 	if os.path.exists(feature_file) and not append:
 		os.remove(feature_file)
-		
-	print feature_file	
 	
+	with open(feature_file, 'a') as file_obj:
+		for row in events:
+			file_obj.write(row)	
+			
+if __name__ =='__main__':
+	args        = parse_arguments()
+	append      = args.append
+	bag_file    = args.input_file
+	csv_file    = args.csv_file
+	output_file = args.output_file
+	input_topic = args.visual_topic
+		
 	#Open bag and get framerate	
-	play_bag_file(bag_file, csv_file)
+	events = play_bag_file(bag_file, csv_file)
+	
+	#Create results file
+	write_results(output_file, events)
+	
 
