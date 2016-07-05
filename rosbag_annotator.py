@@ -21,6 +21,7 @@ start_rect     = 2*[None]
 mouse_pressed  = False
 prev_mouse_loc = None
 
+  
 def parse_arguments():
 	parser = argparse.ArgumentParser(
 		prog='PROG',
@@ -66,10 +67,10 @@ def mouse_cb(event, x , y, flags, param):
 	
 
 def buffer_data(csv_file, bag, input_topic, compressed):
-	start_time = None
 	image_buff = []
 	time_buff  = []
 	box_buff   = []
+	start_time = None
 	bridge     = CvBridge()
 	
 	#Buffer the bounded boxes from the csv
@@ -145,10 +146,11 @@ def play_bag_file(bag_file, csv_file):
 	counter = 0
 	pause  = False
 	events = []
-
+	
+	
 	#Loop through the image buffer
 	while counter in range(0, len(image_buff) - 1):
-		cv_image = image_buff[counter].copy()
+		cv_image = image_buff[counter].copy()		
 		try:
 			(x, y, width, height) = box_buff[counter]
 			cv2.rectangle(cv_image, (x, y), ((x + width), (y + height)), (255, 0, 0), 1)	
@@ -158,7 +160,7 @@ def play_bag_file(bag_file, csv_file):
 		cv2.imshow("Image", cv_image)
 		(counter, framerate, pause, events) = keyPressed(time_buff, events, counter, framerate, pause)
 		#If the image is paused
-		while(pause):
+		while(pause and counter < len(image_buff)):
 			cv_image_pause = image_buff[counter].copy()
 			try:
 				if start_rect[0] != None and start_rect[1] != None:
@@ -245,7 +247,7 @@ if __name__ =='__main__':
 	csv_file    = args.csv_file
 	output_file = args.output_file
 	input_topic = args.visual_topic
-		
+				
 	#Open bag and get framerate	
 	events = play_bag_file(bag_file, csv_file)
 	
